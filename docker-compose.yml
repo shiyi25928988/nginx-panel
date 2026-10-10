@@ -1,0 +1,33 @@
+# 一体式部署：面板 + nginx 同容器（基础镜像已含 JDK21 + nginx）
+#
+# 使用前：
+#   1. mvn package -DskipTests
+#   2. docker build -f Dockerfile.base -t nginx-shell-base:1.0 .
+#   3. docker build -t nginx-shell:1.0 .
+#   4. docker compose up -d
+#
+# 端口：容器内 80 = nginx，8080 = Nginx Shell 面板
+# 持久化：./data 存 H2（版本历史/审计日志），./nginx-conf 存 nginx 配置（可留空自动初始化）
+services:
+  nginx-shell:
+    image: nginx-shell:1.0
+    container_name: nginx-shell
+    ports:
+      - "8080:8080"   # 管理面板
+      - "8081:80"     # nginx（演示可用，生产按需改）
+    environment:
+      SERVER_PORT: "8080"
+      # ---- 内置管理员（仅空库首次创建时生效） ----
+      ADMIN_DEFAULT_USERNAME: admin
+      ADMIN_DEFAULT_PASSWORD: admin123
+      # ---- H2 挂到宿主目录，容器重建数据不丢 ----
+      JDBC_URL: "jdbc:h2:file:/app/data/nginx_shell;MODE=MySQL;DB_CLOSE_DELAY=-1"
+      # ---- 同容器 native 模式 ----
+      NGINX_CONF_DIR: /etc/nginx
+      NGINX_EXEC_MODE: native
+      NGINX_PID_FILE: /run/nginx.pid
+    volumes:
+      - ./data:/app/data      # H2 数据库
+      # nginx 配置：首次留空（容器初始化默认配置），想把配置落到宿主机时解开下一行
+      # - ./nginx-conf:/etc/nginx
+    restart: unless-stopped

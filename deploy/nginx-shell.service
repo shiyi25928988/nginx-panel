@@ -1,0 +1,33 @@
+# Nginx Shell systemd 服务示例（native 模式：面板与 nginx 同机部署，推荐）
+#
+# 安装：
+#   1. mvn package -DskipTests
+#   2. sudo mkdir -p /opt/nginx-shell && sudo cp target/nginx-shell.jar /opt/nginx-shell/
+#   3. sudo cp deploy/nginx-shell.service /etc/systemd/system/
+#   4. sudo systemctl daemon-reload && sudo systemctl enable --now nginx-shell
+#
+# 权限说明：nginx 配置读写与 nginx -s reload 通常需要 root，
+#   - 最简单：本服务以 root 运行（User=root，默认）；
+#   - 更安全：User=deploy + nginx.sudo=true（deploy 用户需配置免密 sudo 限定 nginx 命令）：
+#     deploy ALL=(root) NOPASSWD: /usr/sbin/nginx, /bin/systemctl restart nginx
+
+[Unit]
+Description=Nginx Shell - Nginx configuration console
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/nginx-shell
+ExecStart=/usr/bin/java \
+  -Dserver.port=8080 \
+  -Dnginx.conf.dir=/etc/nginx \
+  -Dnginx.bin=/usr/sbin/nginx \
+  -Dnginx.exec.mode=native \
+  -Dnginx.pid.file=/run/nginx.pid \
+  -Dnginx.sudo=false \
+  -jar /opt/nginx-shell/nginx-shell.jar
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

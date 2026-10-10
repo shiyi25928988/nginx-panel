@@ -1,0 +1,34 @@
+# ============================================================
+# Nginx Shell 基础镜像：JDK 21 + Nginx 合一
+#   docker build -f Dockerfile.base -t nginx-shell-base:1.0 .
+# 适用：面板与 nginx 同容器一体部署（native 模式，面板 root 拉 nginx）
+#
+# nginx 来源：Ubuntu 发行版仓库（编译目标为基线 x86-64，
+# 在老 CPU/低配服务器上可用；nginx.org 官方包要求 x86-64-v2+ 会报
+# "CPU ISA level is lower than required"。环境允许时可按需切换官方仓库。）
+# ============
+
+# temurin 21-jre 默认 Ubuntu（apt 系），JRE 体积比 JDK 镜像小且满足运行
+FROM eclipse-temurin:21-jre
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Shanghai \
+    LANG=C.UTF-8
+
+# 时区 + 常用工具；Ubuntu 发行版 nginx（含默认站点配置）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tzdata curl ca-certificates nginx \
+    && ln -sf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && mkdir -p /etc/nginx/conf.d /var/log/nginx \
+    && nginx -v \
+    && java --version \
+    && rm -rf /var/lib/apt/lists/*
+
+# 面板约定：native 模式
+#   nginx.conf.dir = /etc/nginx
+#   nginx.bin      = /usr/sbin/nginx
+#   nginx.pid.file = /run/nginx.pid（Ubuntu 包默认配置即此路径）
+VOLUME ["/etc/nginx", "/var/log/nginx"]
+
+CMD ["/bin/bash"]

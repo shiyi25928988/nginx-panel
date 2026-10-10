@@ -1,0 +1,6 @@
+target/
+data/
+logs/
+certs/
+temp/
+dependency-reduced-pom.xml
