@@ -2,6 +2,10 @@
 var newCertPem = null;
 var newKeyPem = null;
 
+function escAttr(s) {
+    return String(s).replace(/&/g, '&').replace(/"/g, '"').replace(/</g, '<').replace(/>/g, '>');
+}
+
 function fmtDate(iso) {
     if (!iso) { return '-'; }
     return String(iso).replace('T', ' ').substring(0, 19);
@@ -17,6 +21,9 @@ $(document).ready(function () {
                 var status = !c.certExists
                     ? '<span class="grey-text">文件缺失</span>'
                     : (c.expired ? '<span class="red-text">已过期</span>' : '<span class="green-text">正常</span>');
+                if (!c.inUse) {
+                    status += ' <span class="grey-text" style="font-size:0.7rem;">未在配置引用</span>';
+                }
                 var match = c.keyMatch === true ? '<span class="green-text">匹配</span>'
                     : (c.keyMatch === false ? '<span class="red-text">不匹配!</span>' : '<span class="grey-text">未知</span>');
                 var domains = (c.domains && c.domains.length) ? c.domains.join(', ') : '-';
@@ -29,9 +36,16 @@ $(document).ready(function () {
                     .append($('<td/>').text(c.certPath).css('font-size', '0.7rem'))
                     .append($('<td/>').html((c.keyPath || '-') + ' ' + match).css('font-size', '0.7rem'))
                     .append($('<td/>').text(c.certExists ? (c.keyAlg || '-') : '-')));
+                var opsTr = body.children().last();
+                if (c.managed) {
+                    opsTr.append($('<td/>').html(
+                        '<a href="#" class="red-text" data-cert="' + escAttr(c.certPath) + '">删除</a>'));
+                } else {
+                    opsTr.append($('<td/>').html('<span class="grey-text" style="font-size:0.7rem;">-</span>'));
+                }
             });
             if (!list || list.length === 0) {
-                body.append('<tr><td colspan="8" class="grey-text">当前配置中没有引用任何 ssl_certificate 指令</td></tr>');
+                body.append('<tr><td colspan="9" class="grey-text">证书目录与配置中都没有证书</td></tr>');
             }
             fillCertSelect(list || []);
         }).fail(apiError);
@@ -159,6 +173,16 @@ $(document).ready(function () {
             },
             error: apiError
         });
+    });
+
+    $('#certTableBody').on('click', 'a[data-cert]', function (e) {
+        e.preventDefault();
+        var path = $(this).data('cert');
+        if (!confirm('删除证书 ' + path + '（连配对私钥，删除前全文已存版本）？')) { return; }
+        $.post('/api/certs/delete', { path: path }, function (r) {
+            M.toast({ html: r.message });
+            loadCerts();
+        }, 'json').fail(apiError);
     });
 
     $('#btnCertRefresh').click(loadCerts);

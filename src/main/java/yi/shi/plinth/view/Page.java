@@ -21,7 +21,7 @@ import static j2html.TagCreator.style;
  */
 public abstract class Page {
 
-    protected String themeColor = "blue";
+    protected String themeColor = "blue-grey darken-3"; // 与登录页背景一致（#37474f）
 
     protected void setThemeColor(String themeColor) {
         this.themeColor = themeColor;

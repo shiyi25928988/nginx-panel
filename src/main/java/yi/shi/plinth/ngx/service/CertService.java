@@ -98,6 +98,7 @@ public class CertService {
     public List<CertView> list() {
         Map<String, String> pairs = scanCertPairs();
         List<CertView> views = new ArrayList<>();
+        Set<String> seen = new java.util.HashSet<>();
         for (Map.Entry<String, String> e : pairs.entrySet()) {
             Path certFile = resolve(e.getKey());
             CertView view = new CertView();
@@ -106,11 +107,46 @@ public class CertService {
             fillCertInfo(view, certFile);
             view.setManaged(certFile.toAbsolutePath().normalize()
                     .startsWith(NginxProperties.certDirPath().toAbsolutePath()));
+            view.setInUse(true); // 被配置引用
+            seen.add(certFile.toString());
             views.add(view);
         }
-        views.sort((a, b) -> Long.compare(
-                a.getDaysLeft() == null ? Long.MAX_VALUE : a.getDaysLeft(),
-                b.getDaysLeft() == null ? Long.MAX_VALUE : b.getDaysLeft()));
+        // 引用了但读不到的证书（缺失/无权限）：按要求不出列
+        views.removeIf(v -> v.isCertExists() == false);
+
+        // 证书工作目录（cert.dir，默认 /app/certs）下未被配置引用的证书也全部列出
+        // （自签生成后、配置引用前即可见，私钥按同目录同名 .key 自动配对）
+        Path certRoot = NginxProperties.certDirPath().toAbsolutePath();
+        try (java.util.stream.Stream<Path> s = java.nio.file.Files.walk(certRoot, 2)) {
+            s.filter(java.nio.file.Files::isRegularFile)
+                    .filter(p -> !p.getFileName().toString().startsWith("."))
+                    .filter(p -> p.toString().endsWith(".tmp") == false)
+                    .forEach(p -> {
+                        String name = p.getFileName().toString().toLowerCase();
+                        if (!(name.endsWith(".crt") || name.endsWith(".pem") || name.endsWith(".cert"))) {
+                            return;
+                        }
+                        if (seen.contains(p.toString())) { return; }
+                        CertView view = new CertView();
+                        view.setCertPath(p.toString());
+                        Path keyFile = keyOf(p);
+                        view.setKeyPath(exists(keyFile) ? keyFile.toString() : null);
+                        fillCertInfo(view, p);
+                        view.setManaged(true);
+                        view.setInUse(false); // 未被配置引用
+                        views.add(view);
+                    });
+        } catch (IOException e) {
+            log.debug("扫描证书目录失败: {}", e.getMessage());
+        }
+        // 排序：配置引用中的在前，其后未引用的；同组内按剩余天数升序
+        views.sort((a, b) -> {
+            int c = Boolean.compare(b.isInUse(), a.isInUse());
+            if (c != 0) { return c; }
+            return Long.compare(
+                    a.getDaysLeft() == null ? Long.MAX_VALUE : a.getDaysLeft(),
+                    b.getDaysLeft() == null ? Long.MAX_VALUE : b.getDaysLeft());
+        });
         return views;
     }
 
@@ -236,6 +272,45 @@ public class CertService {
                 return result;
             } catch (IOException e) {
                 throw new NginxPanelException("自签证书写入失败: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * 删除证书（上传/自签的，位于 cert.dir）：连配对私钥一起删，
+     * 删除前全文入版本表（回退可重建），正在被配置引用的拒绝删除。
+     */
+    public SaveResult delete(String certPath) {
+        Path certFile = Paths.get(certPath);
+        assertCertTarget(certFile);
+        Path keyFile = keyOf(certFile);
+        // 被配置引用 → 拒绝（防 reload 后 nginx 起不来）
+        Map<String, String> pairs = scanCertPairs();
+        String resolvedKey = pairs.get(certFile.toAbsolutePath().normalize().toString());
+        if (resolvedKey != null || pairs.containsKey(certFile.toString())) {
+            throw new NginxPanelException("该证书正被配置引用，请先修改站点配置移除 ssl_certificate 后再删除");
+        }
+
+        SaveResult result = new SaveResult();
+        synchronized (confWriteLock.monitor) {
+            try {
+                String oldCert = exists(certFile) ? readString(certFile) : null;
+                String oldKey = exists(keyFile) ? readString(keyFile) : null;
+                if (oldCert == null && oldKey == null) {
+                    throw new NginxPanelException("文件不存在: " + certPathOf(certFile));
+                }
+                if (oldCert != null) { versionService.record(certPathOf(certFile), oldCert, null, "删除证书"); }
+                if (oldKey != null) { versionService.record(certPathOf(keyFile), oldKey, null, "删除证书（连私钥）"); }
+                java.nio.file.Files.deleteIfExists(certFile);
+                java.nio.file.Files.deleteIfExists(keyFile);
+                auditService.success("DELETE_CERT", certPathOf(certFile),
+                        "删除成功" + (oldKey != null ? "（连私钥）" : "") + "，nginx -t 通过");
+                result.setSuccess(true);
+                result.setMessage("证书已删除" + (oldKey != null ? "（连私钥）" : ""));
+                return result;
+            } catch (IOException e) {
+                auditService.failed("DELETE_CERT", certPathOf(certFile), "删除失败: " + e.getMessage());
+                throw new NginxPanelException("删除失败: " + e.getMessage(), e);
             }
         }
     }
@@ -500,7 +575,7 @@ public class CertService {
         Path certRoot = NginxProperties.certDirPath().toAbsolutePath();
         Path normalized = certFile.toAbsolutePath().normalize();
         if (!normalized.startsWith(certRoot)) {
-            throw new NginxPanelException("仅允许替换面板证书目录内的文件（" + certRoot + "）；"
+            throw new NginxPanelException("仅允许操作面板证书目录内的文件（" + certRoot + "）；"
                     + "系统证书（/etc/ssl 等）与其它路径请先修改配置中的 ssl_certificate 指向面板证书目录");
         }
     }

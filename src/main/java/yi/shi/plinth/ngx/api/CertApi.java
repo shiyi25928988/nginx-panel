@@ -4,6 +4,7 @@ import com.google.inject.Inject;
 import java.util.List;
 import yi.shi.plinth.annotation.auth.AUTH;
 import yi.shi.plinth.annotation.http.HttpBody;
+import yi.shi.plinth.annotation.http.HttpParam;
 import yi.shi.plinth.annotation.http.HttpPath;
 import yi.shi.plinth.annotation.http.HttpService;
 import yi.shi.plinth.annotation.http.Method.GET;
@@ -38,6 +39,14 @@ public class CertApi {
         return new JSON<>(certService.replace(
                 req.getCertPath(), req.getCertPem(), req.getKeyPem(),
                 req.getPassword(), req.getReason(), req.getReloadAfter()));
+    }
+
+    /** 删除证书（cert.dir 内的上传/自签证书，连配对私钥；被配置引用的拒绝删除）。 */
+    @POST
+    @HttpPath("/api/certs/delete")
+    @AUTH(orRole = "admin")
+    public JSON<SaveResult> delete(@HttpParam("path") String path) {
+        return new JSON<>(certService.delete(path));
     }
 
     @POST

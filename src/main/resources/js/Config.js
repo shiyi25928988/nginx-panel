@@ -83,7 +83,8 @@ $(document).ready(function () {
             success: function (r) {
                 $('#uploadModal').modal('close');
                 showOutput(r.testOutput || '');
-                M.toast({ html: r.message });
+                if (r.success) { M.toast({ html: r.message }); }
+                else { M.toast({ html: failHtml(r.message, r.testOutput), displayLength: 9000 }); }
                 if (r.success) {
                     dirty = false;
                     currentPath = path;
@@ -215,8 +216,13 @@ $(document).ready(function () {
                 reloadAfter: $('#autoReload').is(':checked')
             }), dataType: 'json',
             success: function (r) {
-                showOutput((r.testOutput || '') + (r.reloadOutput ? '\n---\n' + r.reloadOutput : ''));
-                M.toast({ html: r.message });
+                var fullOut = (r.testOutput || '') + (r.reloadOutput ? '\n---\n' + r.reloadOutput : '');
+                showOutput(fullOut);
+                if (r.success) {
+                    M.toast({ html: r.message });
+                } else {
+                    M.toast({ html: failHtml(r.message, r.testOutput), displayLength: 9000 });
+                }
                 if (r.success) {
                     dirty = false;
                     $('#editorTitle').text(currentPath);
@@ -232,7 +238,7 @@ $(document).ready(function () {
         $.post('/api/nginx/test', function (r) {
             showOutput(r.output || '');
             if (r.exitCode === 0) { M.toast({ html: '校验通过' }); }
-            else { M.toast({ html: '校验失败，见下方输出' }); }
+            else { M.toast({ html: failHtml('nginx -t 校验失败', r.output), displayLength: 9000 }); }
         }, 'json').fail(apiError);
     });
 
@@ -242,7 +248,7 @@ $(document).ready(function () {
             // 未打开文件：退化为校验磁盘上整套配置
             $.post('/api/nginx/test', function (r) {
                 showOutput(r.output || '');
-                M.toast({ html: r.exitCode === 0 ? '校验通过' : '校验失败，见下方输出' });
+                M.toast({ html: r.exitCode === 0 ? '校验通过' : failHtml('校验失败', r.output), displayLength: 9000 });
             }, 'json').fail(apiError);
             return;
         }
@@ -274,7 +280,7 @@ $(document).ready(function () {
         $.post('/api/nginx/reload', function (r) {
             showOutput(r.output || '');
             if (r.exitCode === 0) { M.toast({ html: '重载成功' }); }
-            else { M.toast({ html: '重载失败，见下方输出' }); }
+            else { M.toast({ html: failHtml('重载失败', r.output), displayLength: 9000 }); }
         }, 'json').fail(apiError);
     });
 
@@ -299,6 +305,33 @@ $(document).ready(function () {
     function showOutput(text) {
         if (!text) { $('#outputPanel').hide(); return; }
         $('#outputPanel').text(text).show();
+    }
+
+    // ===== 失败 toast：结论一行 + nginx 原始错误行（[emerg] 等红色，转义防 XSS）=====
+    function escHtml(s) {
+        return String(s).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
+    }
+    function failHtml(message, testOutput) {
+        var html = '<div style="font-weight:600;">' + escHtml(message) + '</div>';
+        if (testOutput) {
+            var lines = String(testOutput).split('\n').filter(function (l) {
+                return l.trim() && l.indexOf('configuration file') === -1;
+            });
+            var shown = lines.slice(0, 4); // 关键错误通常在前几行（[emerg] 行）
+            html += '<div style="font-family:monospace;font-size:0.72rem;margin-top:6px;'
+                 +  'white-space:pre-wrap;text-align:left;max-width:520px;">'
+                 +  shown.map(function (l) {
+                     var hot = /\[emerg\]|\[alert\]|\[crit\]|failed/i.test(l);
+                     return '<div style="' + (hot ? 'color:#ffcdd2;' : 'color:#eceff1;') + '">'
+                          + escHtml(l) + '</div>';
+                 }).join('')
+                 +  '</div>';
+            if (lines.length > shown.length) {
+                html += '<div style="opacity:0.7;font-size:0.7rem;">…共 ' + lines.length
+                     +  ' 行，完整输出见下方黑色面板</div>';
+            }
+        }
+        return html;
     }
 
     loadFiles();

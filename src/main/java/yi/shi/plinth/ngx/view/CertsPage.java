@@ -49,7 +49,7 @@ public class CertsPage extends Page {
         return main().with(
                 div().withClass("container").with(
                         h5("证书管理").withStyle("margin-top:20px;"),
-                        span("证书清单由当前配置 ssl_certificate 指令实时发现；替换走校验流水线（nginx -t + 版本留痕），失败自动还原。"
+                        span("清单 = 配置引用的证书 + 证书目录（cert.dir，默认 /app/certs）全部证书（含自签未引用的）；替换走校验流水线（nginx -t + 版本留痕），失败自动还原。"
                                 + "上传/生成的证书统一存放在面板证书目录（cert.dir，默认 /app/certs），"
                                 + "/etc/ssl 等系统证书不参与面板替换，请修改配置 ssl_certificate 指向面板证书目录。")
                                 .withClass("grey-text").withStyle("font-size:0.8rem;display:block;"),
@@ -68,7 +68,7 @@ public class CertsPage extends Page {
                                                         ),
                                                         table().withClass("highlight").with(
                                                                 thead(tr(th("状态"), th("域名"), th("签发者"), th("有效期至"),
-                                                                        th("剩余天数"), th("证书路径"), th("私钥"), th("算法"))),
+                                                                        th("剩余天数"), th("证书路径"), th("私钥"), th("算法"), th("操作"))),
                                                                 tbody().withId("certTableBody")
                                                         )
                                                 )

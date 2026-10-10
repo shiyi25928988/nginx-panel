@@ -49,6 +49,12 @@ public class JavaScriptAndCss {
     }
 
     @GET
+    @HttpPath("/js/Topology.js")
+    public BINARY topologyJs() {
+        return load("/js/Topology.js");
+    }
+
+    @GET
     @HttpPath("/js/Certs.js")
     public BINARY certsJs() {
         return load("/js/Certs.js");

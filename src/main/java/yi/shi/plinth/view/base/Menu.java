@@ -15,6 +15,7 @@ public class Menu {
         if (StpUtil.isLogin()) {
             menu.put("控制台", "/page/index");
             menu.put("服务状态", "/page/status");
+            menu.put("网络拓扑", "/page/topology");
             menu.put("配置文件", "/page/config");
             menu.put("Nginx日志", "/page/logs");
             menu.put("证书管理", "/page/certs");
