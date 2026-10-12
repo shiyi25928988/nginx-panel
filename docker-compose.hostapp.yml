@@ -1,0 +1,46 @@
+# ============================================================
+# Nginx Shell — 宿主目录整挂版（/app 已一并持久化）
+#
+# 与 docker-compose.yml 的差异：
+#   把容器整个 /app 挂到宿主 /data/nginx-shell/app，
+#   面板 jar、entrypoint、嵌入式 H2（/app/data）、证书（/app/certs）
+#   全部落在宿主机，容器重启/重建、镜像升级（换 jar）数据零丢失。
+#
+# ★ 首次使用（宿主机需已装 docker + compose）：
+#   0. mvn package -DskipTests && docker build -f Dockerfile.base -t nginx-shell-base:1.0 .
+#   1. docker build -t nginx-shell:1.0 .
+#   2. 一次性引导：把镜像内置的 /app 内容拷到宿主目录
+#        mkdir -p /data/nginx-shell/app
+#        docker create --name app-extract nginx-shell:1.0
+#        docker cp app-extract:/app/. /data/nginx-shell/app/
+#        docker rm app-extract
+#   3. compose -f docker-compose.hostapp.yml up -d
+#
+# ★ 升级面板：替换宿主机的 jar 再重启即可（不必重建镜像）
+#      mvn package -DskipTests
+#      docker cp target/nginx-shell.jar nginx-shell:/app/app.jar
+#      docker restart nginx-shell
+#
+# APP_DIR 可用环境变量覆盖（示例：APP_DIR=/data/nginx-shell/app）。
+# 权限：宿主目录需允许容器内 root 读写（默认即可）。
+# ============================================================
+services:
+  nginx-shell:
+    image: nginx-shell:1.0
+    container_name: nginx-shell
+    ports:
+      - "8080:8080"   # 管理面板
+      - "80:80"       # nginx
+      - "443:443"     # nginx HTTPS（用不到可删）
+    environment:
+      SERVER_PORT: "8080"
+      ADMIN_DEFAULT_USERNAME: admin
+      ADMIN_DEFAULT_PASSWORD: admin123
+      JDBC_URL: "jdbc:h2:file:/app/data/nginx_shell;MODE=MySQL;DB_CLOSE_DELAY=-1"
+      NGINX_CONF_DIR: /etc/nginx
+      NGINX_EXEC_MODE: native
+      NGINX_PID_FILE: /run/nginx.pid
+      CERT_DIR: /app/certs
+    volumes:
+      - ${APP_DIR:-/data/nginx-shell/app}:/app
+    restart: unless-stopped
