@@ -116,7 +116,11 @@ docker compose up -d
 
 > Ubuntu 发行版 nginx 默认布局带 `sites-enabled/default`（与 conf.d 冲突时后者被 ignored），一体部署后建议通过面板编辑 `nginx.conf` 关闭 `sites-enabled` 相关 include，或删掉默认站点符号链接。
 
-### 5. docker exec 模式（面板与 nginx 分容器，可选）
+### 5. 容器化替换宿主机 nginx（Linux 生产部署推荐）
+
+`docker-compose.linux.yml` 一站式接管：`network_mode: host` 直接监听宿主 80/443（替代二进制安装的 nginx）、原 nginx 配置迁至 `/data/nginx-shell/nginx`、日志与面板数据（jar/H2/证书）全持久化到宿主；迁移引导（停旧 nginx、config 迁移、/app 引导）见文件头部注释。旧 nginx 务必先 `systemctl stop/disable` 释放端口。
+
+### 6. docker exec 模式（面板与 nginx 分容器，可选）
 
 旧模式保留：面板容器挂 `/var/run/docker.sock` + docker CLI，经 `docker exec <nginx容器> nginx -t/-s reload` 控制同 compose 内的 nginx 容器。需要时把 entrypoint 换回 `docker exec` 形态并设 `NGINX_EXEC_MODE=docker`。
 

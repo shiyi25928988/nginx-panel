@@ -102,7 +102,7 @@ public class CertsPage extends Page {
                                                         ),
                                                         div().withClass("input-field").with(
                                                                 input().withId("genPassword").withType("password"),
-                                                                label("覆盖旧文件时的密码").withFor("genPassword")
+                                                                label("管理员密码（仅当同名文件已存在时必填，用于确认覆盖）").withFor("genPassword")
                                                         ),
                                                         a("生成").withHref("#").withId("btnGenCert")
                                                                 .withClass("teal btn waves-effect").withStyle("margin:4px;text-transform:none;")

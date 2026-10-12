@@ -1,0 +1,66 @@
+# ============================================================
+# Nginx Shell — Linux 宿主机 nginx 替换版（容器化接管原生 nginx）
+#
+# 场景：服务器上原来用二进制/apt 安装 nginx，现在用本容器接管：
+#   1. nginx 以 host 网络直接监听宿主机 80/443（无端口映射、无 NAT）；
+#   2. 原来的配置文件与日志迁到宿主目录并持久化；
+#   3. 面板 + 数据 + 证书持久化（/app 整挂）。
+#
+# ★ 迁移与启动步骤（服务器上执行）：
+#   0. 构建镜像（开发机或服务器均可）：
+#        mvn package -DskipTests
+#        docker build -f Dockerfile.base -t nginx-shell-base:1.0 .
+#        docker build -t nginx-shell:1.0 .
+#   1. 停掉并禁用旧的二进制 nginx（必须，否则 80/443 被占）：
+#        sudo systemctl stop nginx && sudo systemctl disable nginx
+#      （编译安装的：killall nginx + 移除启动脚本/自启项）
+#   2. 准备持久化目录：
+#        mkdir -p /data/nginx-shell/app /data/nginx-shell/nginx /data/nginx-shell/logs
+#   3a. 迁移原 nginx 配置（替换二进制安装的场景，配置原样保留）：
+#        sudo cp -a /etc/nginx/. /data/nginx-shell/nginx/
+#        sudo chown -R root:root /data/nginx-shell/nginx
+#   3b. 没有旧配置时，从镜像拷一份默认布局：
+#        docker create --name cfg-extract nginx-shell:1.0
+#        docker cp cfg-extract:/etc/nginx/. /data/nginx-shell/nginx/
+#        docker rm cfg-extract
+#   4. 拷出面板程序与数据目录（镜像 → 宿主，整挂 /app 必需）：
+#        docker create --name app-extract nginx-shell:1.0
+#        docker cp app-extract:/app/. /data/nginx-shell/app/
+#        docker rm app-extract
+#   5. 启动 + 验证（面板走 8080，nginx 直接占 80/443）：
+#        docker compose -f docker-compose.linux.yml up -d
+#        curl -I http://127.0.0.1/ && curl -I http://127.0.0.1:8080/page/login
+#
+# ★ 升级面板：宿主机替换 jar + 重启即可，配置/数据/证书全程不动：
+#        mvn package -DskipTests
+#        docker cp target/nginx-shell.jar nginx-shell:/app/app.jar
+#        docker restart nginx-shell
+#
+# 注：
+#   - network_mode: host 生效于 Linux 原生 docker（Docker Desktop 的 host 指向的是
+#     背后的虚拟机，不适用本场景）；
+#   - 客户端 IP 变为真实地址：nginx.conf 里基于网桥网段的 allow/deny 或
+#     set_real_ip_from 需按新网络形态调整；
+#   - 原证书在 /etc/ssl（snakeoil 等）但容器内有自己的 /etc/ssl，需要引用
+#     宿主系统证书时可解开最后的只读挂载并在配置里对齐路径。
+# ============================================================
+services:
+  nginx-shell:
+    image: nginx-shell:1.0
+    container_name: nginx-shell
+    network_mode: host          # nginx 直接监听宿主 80/443，面板监听 8080，无需 ports
+    environment:
+      SERVER_PORT: "8080"
+      ADMIN_DEFAULT_USERNAME: admin
+      ADMIN_DEFAULT_PASSWORD: admin123
+      JDBC_URL: "jdbc:h2:file:/app/data/nginx_shell;MODE=MySQL;DB_CLOSE_DELAY=-1"
+      NGINX_CONF_DIR: /etc/nginx
+      NGINX_EXEC_MODE: native
+      NGINX_PID_FILE: /run/nginx.pid
+      CERT_DIR: /app/certs
+    volumes:
+      - ${APP_DIR:-/data/nginx-shell/app}:/app          # 面板 jar/数据/证书（整挂）
+      - ${NGINX_CONF_DIR:-/data/nginx-shell/nginx}:/etc/nginx   # 原nginx配置（含conf.d/sites-*）
+      - ${LOG_DIR:-/data/nginx-shell/logs}:/var/log/nginx       # 原nginx日志（logrotate 无感）
+      # - /etc/ssl:/etc/ssl:ro                          # 可选：引用宿主系统证书时解开
+    restart: unless-stopped
