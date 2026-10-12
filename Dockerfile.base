@@ -15,15 +15,26 @@ ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai \
     LANG=C.UTF-8
 
-# 时区 + 常用工具；Ubuntu 发行版 nginx（含默认站点配置）
+# 时区 + 常用工具；Ubuntu 发行版 nginx + stream 动态模块（--with-stream=dynamic 需装包加载）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        tzdata curl ca-certificates nginx \
+        tzdata curl ca-certificates nginx libnginx-mod-stream \
     && ln -sf /usr/share/zoneinfo/$TZ /etc/localtime \
     && echo $TZ > /etc/timezone \
     && mkdir -p /etc/nginx/conf.d /var/log/nginx \
     && nginx -v \
     && java --version \
     && rm -rf /var/lib/apt/lists/*
+
+# stream 模块自检：包安装后 modules-enabled 应有 50-mod-stream.conf（load_module），
+# 且带 stream{} 的临时配置必须 nginx -t 通过，确保容器里 stream 直接可用
+RUN test -f /usr/lib/nginx/modules/ngx_stream_module.so \
+    && test -f /etc/nginx/modules-enabled/50-mod-stream.conf \
+    && printf 'stream { server { listen 18445; proxy_pass 127.0.0.1:80; } }\n' > /etc/nginx/stream-selfcheck.conf \
+    && printf 'include /etc/nginx/stream-selfcheck.conf;\n' >> /etc/nginx/nginx.conf \
+    && nginx -t 2>&1 | tail -1 \
+    && sed -i '$ d' /etc/nginx/nginx.conf \
+    && rm -f /etc/nginx/stream-selfcheck.conf \
+    && echo "[base-image] stream module OK"
 
 # 面板约定：native 模式
 #   nginx.conf.dir = /etc/nginx

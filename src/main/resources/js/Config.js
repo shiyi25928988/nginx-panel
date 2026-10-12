@@ -158,7 +158,14 @@ $(document).ready(function () {
                     sel.append($('<option/>').attr('value', n.path).text(flag + n.path));
                 }
             });
+            // 默认打开主配置 nginx.conf（带 ?file= 参数时优先）
             var preselect = new URLSearchParams(location.search).get('file');
+            if (!preselect) {
+                var hasMain = (nodes || []).some(function (n) {
+                    return !n.directory && n.path === 'nginx.conf';
+                });
+                if (hasMain) { preselect = 'nginx.conf'; }
+            }
             if (preselect) { sel.val(preselect); openFile(preselect); }
         }).fail(apiError);
     }

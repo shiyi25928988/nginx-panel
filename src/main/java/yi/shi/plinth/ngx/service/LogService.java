@@ -62,17 +62,22 @@ public class LogService {
         // 与常见部署 conf/../logs 结构吻合；发行版配置里基本用绝对路径）
         Path base = NginxProperties.confDirPath().getParent();
 
-        // 来源一：二进制编译默认值（nginx -V 输出含 --error-log-path / --http-log-path）
+        // 来源一：二进制编译默认值（nginx -V 输出含 --error-log-path / --http-log-path）。
+        // stderr/syslog/memory/off 这类"非文件落盘"默认值不采纳——否则会出现
+        // "stderr（文件未生成）"的无意义行，而实际日志在发行版标准路径下（见下方 fallback）。
         Set<String> defaults = new LinkedHashSet<>();
-        String fullVersionScript = nginxControlService.fullVersion();
-        Matcher m1 = V_ERROR_LOG.matcher(fullVersionScript);
-        if (m1.find()) {
+        String fullVersion = nginxControlService.fullVersion();
+        Matcher m1 = V_ERROR_LOG.matcher(fullVersion);
+        if (m1.find() && isUsableLogPath(m1.group(1))) {
             defaults.add(m1.group(1));
         }
-        Matcher m2 = V_HTTP_LOG.matcher(fullVersionScript);
-        if (m2.find()) {
+        Matcher m2 = V_HTTP_LOG.matcher(fullVersion);
+        if (m2.find() && isUsableLogPath(m2.group(1))) {
             defaults.add(m2.group(1));
         }
+        // 来源一补：发行版标准路径兜底（无论 -V 编译值是否可用，存在即列出）
+        defaults.add("/var/log/nginx/error.log");
+        defaults.add("/var/log/nginx/access.log");
 
         // 来源二：配置指令声明（优先级高于二进制默认）
         Set<String> fromConfig = new LinkedHashSet<>();
@@ -132,7 +137,8 @@ public class LogService {
                             while (m.find()) {
                                 String p2 = m.group(2);
                                 if (!(p2.startsWith("syslog:") || p2.startsWith("memory:")
-                                        || p2.equalsIgnoreCase("stderr") || p2.startsWith("|"))) {
+                                        || p2.equalsIgnoreCase("stderr") || p2.startsWith("|")
+                                        || p2.contains("$"))) {  // 带变量的动态路径无法按固定文件读取
                                     into.add(p2);
                                 }
                             }
@@ -199,6 +205,14 @@ public class LogService {
             allowed.add(f.getPath() + ".2");
         }
         return allowed.contains(requested);
+    }
+
+    /** 编译默认值是否是"文件"路径（stderr/syslog/memory/off 一律不算）。 */
+    private static boolean isUsableLogPath(String p) {
+        if (p == null) { return false; }
+        String v = p.trim().toLowerCase();
+        return !(v.isEmpty() || v.equals("stderr") || v.equals("off")
+                || v.startsWith("syslog:") || v.startsWith("memory:"));
     }
 
     private String normalizeReq(String path) {
