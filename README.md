@@ -1,6 +1,6 @@
 # Nginx Shell
 
-<p align="left">
+<p align="left">🇨🇳 简体中文 | 🇺🇸 <a href="README.en.md">English</a></p>
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg">
   <img alt="Java" src="https://img.shields.io/badge/Java-21-orange.svg">
   <img alt="Jetty" src="https://img.shields.io/badge/Jetty%2012-green.svg">
